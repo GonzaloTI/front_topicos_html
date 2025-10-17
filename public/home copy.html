@@ -1,0 +1,254 @@
+<h1>Bienvenido, <span id="nombreUsuario"></span>!</h1>
+<h1>Registro, <span id="registro"></span>!</h1>
+<h2>Token, <span id="token"></span>!</h2>
+
+<h2>Materias inscritas</h2>
+<table border="1" cellpadding="8" id="tablaMaterias">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Sigla</th>
+      <th>Nombre</th>
+      <th>Nivel</th>
+      <th>Créditos</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+
+
+
+<div id="grupos-container">
+    <h3>Grupos de Materia Disponibles</h3>
+    <table id="grupos-table" border="1" cellpadding="8">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Materia</th>
+                <th>Docente</th>
+                <th>Cupo</th>
+                <th>Aula</th>
+                <th>Módulo</th>
+                <th>Seleccionar</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <br>
+    <button id="inscribirBtn">Inscribir Materias Seleccionadas</button>
+      <!-- Contenedor para mostrar el estado de la tarea -->
+        <div id="status-container"></div>
+</div>
+
+
+<button id="logoutBtn">Cerrar sesión</button>
+
+<script>
+const usuario = localStorage.getItem("usuario");
+const registro = localStorage.getItem("registro");
+const token = localStorage.getItem("token");
+let pollingIntervalId = null;
+const statusContainer = document.getElementById('status-container');
+
+if (!token) {
+  window.location.href = "/";
+} else {
+  document.getElementById("nombreUsuario").textContent = usuario;
+  document.getElementById("token").textContent = token;
+  document.getElementById("registro").textContent = registro;
+}
+
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  localStorage.clear();
+  window.location.href = "/";
+});
+
+// ----------------- Materias inscritas -----------------
+async function cargarMaterias() {
+  try {
+    const res = await fetch(`http://127.0.0.1:8000/materiasxregistro?registro=${registro}`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Error al obtener materias");
+      return;
+    }
+
+    const tbody = document.querySelector("#tablaMaterias tbody");
+    tbody.innerHTML = "";
+
+    Object.values(data).forEach(materia => {
+      const fila = document.createElement("tr");
+      fila.innerHTML = `
+        <td>${materia.id}</td>
+        <td>${materia.sigla}</td>
+        <td>${materia.nombre}</td>
+        <td>${materia.nivel}</td>
+        <td>${materia.creditos}</td>
+      `;
+      tbody.appendChild(fila);
+    });
+
+  } catch (error) {
+    console.error(error);
+    alert("Error de conexión con el servidor.");
+  }
+}
+
+// ----------------- Grupos de materia -----------------
+const periodo_id = 1; // actualizar según tu lógica
+
+async function cargarGruposMateria() {
+  try {
+    const res = await fetch(`http://127.0.0.1:8000/gruposmateria`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const grupos = await res.json();
+    const tbody = document.querySelector("#grupos-table tbody");
+    tbody.innerHTML = "";
+
+    grupos.forEach(g => {
+      // Tomamos el primer horario disponible
+      const horario = g.horarios[0] || {};
+      const aula = horario.aula || {};
+      const cupoInsuficiente = (g.cupo ?? 0) <= 0;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${g.nombre}</td>
+        <td>${g.materia.nombre}</td>
+        <td>${g.docente.nombre}</td>
+        <td>${g.cupo ?? 0}</td>
+        <td>${aula.nombre || "-"}</td>
+        <td>${(aula.modulo && aula.modulo.numero) || "-"}</td>
+        <td><input type="checkbox" class="grupo-checkbox" value="${g.id}" ${cupoInsuficiente ? 'disabled' : ''}></td>
+      `;
+       if (cupoInsuficiente) {
+           tr.style.opacity = 0.5;
+       }
+      tbody.appendChild(tr);
+    });
+  } catch(err) {
+    console.error(err);
+    alert("Error al cargar grupos de materia");
+  }
+}
+
+async function inscribirMateriasSeleccionadas() {
+   const inscribirBtn = document.getElementById('inscribirBtn');
+    const checkboxes = document.querySelectorAll('.grupo-checkbox:checked');
+    const grupos_ids = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+    if (grupos_ids.length === 0) {
+        alert("Por favor, selecciona al menos una materia para inscribir.");
+        return;
+    }
+    inscribirBtn.disabled = true;
+    statusContainer.className = 'status-processing';
+    statusContainer.textContent = 'Enviando solicitud de inscripción...';
+
+    const payload = {
+        estudiante_registro: registro,
+        periodo_id: periodo_id,
+        grupos_ids: grupos_ids
+    };
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:8000/inscripcionmaterialistasync`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (res.status === 201) {
+            alert(data.msg || "Inscripción realizada con éxito.");
+            // Recargamos ambas tablas para reflejar los cambios
+            statusContainer.textContent = 'Tarea recibida. Verificando resultado...';
+                    const [cola, tareaId] = data.id_tarea;
+                    iniciarPollingResultado(cola, tareaId);
+            cargarMaterias();
+            cargarGruposMateria();
+        } else {
+            alert(data.error || "Ocurrió un error al inscribir las materias.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de conexión. No se pudo completar la inscripción.");
+        inscribirBtn.disabled = false;
+    }
+}
+      
+
+function iniciarPollingResultado(cola, tareaId) {
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId); // Limpia cualquier polling anterior
+            }
+            pollingIntervalId = setInterval(() => {
+                verificarEstadoTarea(cola, tareaId);
+            }, 500); // Consulta cada medio segundo
+        }
+
+async function verificarEstadoTarea(cola, tareaId) {
+            const inscribirBtn = document.getElementById('inscribirBtn');
+            const statusContainer = document.getElementById('status-container');
+            
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/colas/${cola}/resultados/${tareaId}`, {
+                    headers: { "Authorization": "Bearer " + token }
+                });
+
+                const data = await res.json();
+                // Estado 1: REALIZADO (éxito)
+                if (data.resultado && data.resultado.msg) {
+                    clearInterval(pollingIntervalId); // Detener polling
+                    statusContainer.className = 'status-success';
+                    statusContainer.textContent = data.resultado.msg;
+                    inscribirBtn.disabled = false;
+                    cargarMaterias();
+                    cargarGruposMateria();
+                }
+                // Estado 2: REALIZADO (error)
+                else if (data.resultado && data.resultado.error) {
+                    clearInterval(pollingIntervalId); // Detener polling
+                    statusContainer.className = 'status-error';
+                    statusContainer.textContent = `Error: ${data.resultado.error}`;
+                    inscribirBtn.disabled = false;
+                    cargarGruposMateria(); // Recargamos por si los cupos cambiaron
+                }
+                // Estado 3: ESPERA (no hacer nada, seguir esperando)
+                else if (data.error && data.error === "Respuesta aún no disponible") {
+                    // Opcional: actualizar mensaje para indicar que sigue procesando
+                    if (!statusContainer.textContent.endsWith("...")) {
+                        statusContainer.textContent += ".";
+                    } else {
+                        statusContainer.textContent = statusContainer.textContent.slice(0, -3);
+                    }
+                }
+            } catch (err) {
+                console.error("Error durante el polling:", err);
+                clearInterval(pollingIntervalId); // Detener en caso de error de red
+                statusContainer.className = 'status-error';
+                statusContainer.textContent = 'Error de conexión al verificar el resultado.';
+                inscribirBtn.disabled = false;
+            }
+        }
+        
+
+
+
+// Asignar el evento al nuevo botón
+document.getElementById('inscribirBtn').addEventListener('click', inscribirMateriasSeleccionadas);
+
+
+// Cargar al inicio
+cargarMaterias();
+cargarGruposMateria();
+</script>

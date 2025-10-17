@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portal de Inscripciones</title>
+
+  <!-- Bootstrap 5 -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+
+  <style>
+    body { background: #f6f8fb; }
+    .page-header {
+      background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+      color: #fff;
+      padding: 2.2rem 0;
+      margin-bottom: 1.5rem;
+    }
+    .brand-badge {
+      background: rgba(255,255,255,.2);
+      border: 1px solid rgba(255,255,255,.25);
+      color: #fff;
+    }
+    #status-container .spinner-border {
+      --bs-spinner-width: 1rem;
+      --bs-spinner-height: 1rem;
+      margin-right: .5rem;
+    }
+    .table thead th { white-space: nowrap; }
+    .opacity-low { opacity:.5; }
+  </style>
+</head>
+<body>
+
+  <!-- Encabezado -->
+  <header class="page-header">
+    <div class="container">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div>
+          <h1 class="h3 mb-1">Bienvenido, <span id="nombreUsuario"></span></h1>
+          <div class="small">
+            <span class="badge brand-badge me-2">Registro: <span id="registro"></span></span>
+            <span class="badge brand-badge">Token: <span id="token"></span></span>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn btn-outline-light btn-sm">
+          Cerrar sesión
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container pb-5">
+
+    <!-- Estado global / alertas -->
+    <div id="status-container" class="alert alert-secondary d-none" role="alert"></div>
+
+    <div class="row g-4">
+      <!-- Materias inscritas -->
+      <div class="col-12 col-lg-5">
+        <div class="card shadow-sm">
+          <div class="card-header bg-white d-flex align-items-center justify-content-between">
+            <h2 class="h5 mb-0">Materias inscritas</h2>
+            <button class="btn btn-sm btn-outline-primary" onclick="cargarMaterias()">
+              <i class="bi bi-arrow-clockwise"></i> Actualizar
+            </button>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped table-hover align-middle mb-0" id="tablaMaterias">
+                <thead class="table-light">
+                  <tr>
+                    <th>ID</th>
+                    <th>Sigla</th>
+                    <th>Nombre</th>
+                    <th>Nivel</th>
+                    <th>Créditos</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card-footer text-muted small">
+            Consulta sólo lectura de materias inscritas.
+          </div>
+        </div>
+      </div>
+
+      <!-- Grupos disponibles -->
+      <div class="col-12 col-lg-7">
+        <div class="card shadow-sm">
+          <div class="card-header bg-white d-flex align-items-center justify-content-between">
+            <h3 class="h5 mb-0">Grupos de Materia Disponibles</h3>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" onclick="cargarGruposMateria()">
+                <i class="bi bi-arrow-clockwise"></i> Recargar
+              </button>
+              <button id="inscribirBtn" class="btn btn-sm btn-primary">
+                <span class="btn-text">Inscribir Materias Seleccionadas</span>
+                <span class="btn-spinner d-none spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table id="grupos-table" class="table table-sm table-striped table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Materia</th>
+                    <th>Docente</th>
+                    <th>Cupo</th>
+                    <th>Aula</th>
+                    <th>Módulo</th>
+                    <th>Seleccionar</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card-footer text-muted small">
+            Marca uno o varios grupos y presiona <em>Inscribir</em>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bootstrap Icons (opcional para íconos del refresh) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+  />
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+  </script>
+
+  <script>
+    const usuario = localStorage.getItem("usuario");
+    const registro = localStorage.getItem("registro");
+    const token = localStorage.getItem("token");
+    let pollingIntervalId = null;
+    const statusContainer = document.getElementById('status-container');
+
+    // Helpers de UI
+    function setStatus(type, message, withSpinner=false) {
+      // type: 'processing' | 'success' | 'error' | 'muted'
+      statusContainer.classList.remove('d-none', 'alert-secondary', 'alert-info', 'alert-success', 'alert-danger');
+      if (type === 'processing') statusContainer.classList.add('alert-info');
+      else if (type === 'success') statusContainer.classList.add('alert-success');
+      else if (type === 'error') statusContainer.classList.add('alert-danger');
+      else statusContainer.classList.add('alert-secondary');
+
+      statusContainer.innerHTML = withSpinner
+        ? `<span class="spinner-border" aria-hidden="true"></span> ${message}`
+        : message;
+    }
+    function clearStatus(){ statusContainer.className='alert d-none'; statusContainer.textContent=''; }
+
+    // Seguridad básica
+    if (!token) {
+      window.location.href = "/";
+    } else {
+      document.getElementById("nombreUsuario").textContent = usuario || '';
+      document.getElementById("token").textContent = token || '';
+      document.getElementById("registro").textContent = registro || '';
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.clear();
+      window.location.href = "/";
+    });
+
+    // ----------------- Materias inscritas -----------------
+    async function cargarMaterias() {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/materiasxregistro?registro=${registro}`, {
+          headers: { "Authorization": "Bearer " + token }
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setStatus('error', data.error || "Error al obtener materias");
+          return;
+        }
+
+        const tbody = document.querySelector("#tablaMaterias tbody");
+        tbody.innerHTML = "";
+
+        Object.values(data).forEach(materia => {
+          const fila = document.createElement("tr");
+          fila.innerHTML = `
+            <td>${materia.id}</td>
+            <td>${materia.sigla}</td>
+            <td>${materia.nombre}</td>
+            <td>${materia.nivel}</td>
+            <td>${materia.creditos}</td>
+          `;
+          tbody.appendChild(fila);
+        });
+
+      } catch (error) {
+        console.error(error);
+        setStatus('error', "Error de conexión con el servidor.");
+      }
+    }
+
+    // ----------------- Grupos de materia -----------------
+    const periodo_id = 1; // actualizar según tu lógica
+
+    async function cargarGruposMateria() {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/gruposmateria`, {
+          headers: { "Authorization": "Bearer " + token }
+        });
+        const grupos = await res.json();
+        const tbody = document.querySelector("#grupos-table tbody");
+        tbody.innerHTML = "";
+
+        grupos.forEach(g => {
+          const horario = g.horarios[0] || {};
+          const aula = horario.aula || {};
+          const cupoInsuficiente = (g.cupo ?? 0) <= 0;
+
+          const tr = document.createElement("tr");
+          if (cupoInsuficiente) tr.classList.add('opacity-low');
+
+          tr.innerHTML = `
+            <td>${g.nombre}</td>
+            <td>${g.materia?.nombre || '-'}</td>
+            <td>${g.docente?.nombre || '-'}</td>
+            <td>${g.cupo ?? 0}</td>
+            <td>${aula.nombre || "-"}</td>
+            <td>${(aula.modulo && aula.modulo.numero) || "-"}</td>
+            <td class="text-center">
+              <input type="checkbox" class="form-check-input grupo-checkbox" value="${g.id}" ${cupoInsuficiente ? 'disabled' : ''}>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(err) {
+        console.error(err);
+        setStatus('error', "Error al cargar grupos de materia");
+      }
+    }
+
+    // ----------------- Inscripción -----------------
+    async function inscribirMateriasSeleccionadas() {
+      const inscribirBtn = document.getElementById('inscribirBtn');
+      const btnText = inscribirBtn.querySelector('.btn-text');
+      const btnSpin = inscribirBtn.querySelector('.btn-spinner');
+
+      const checkboxes = document.querySelectorAll('.grupo-checkbox:checked');
+      const grupos_ids = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+      if (grupos_ids.length === 0) {
+        setStatus('muted', "Por favor, selecciona al menos una materia para inscribir.");
+        return;
+      }
+
+      inscribirBtn.disabled = true;
+      btnText.textContent = 'Procesando...';
+      btnSpin.classList.remove('d-none');
+      setStatus('processing', 'Enviando solicitud de inscripción...', true);
+
+      const payload = {
+        estudiante_registro: registro,
+        periodo_id: periodo_id,
+        grupos_ids: grupos_ids
+      };
+
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/inscripcionmaterialistasync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (res.status === 201) {
+          setStatus('processing', 'Tarea recibida. Verificando resultado...', true);
+          const [cola, tareaId] = data.id_tarea;
+          iniciarPollingResultado(cola, tareaId);
+          cargarMaterias();
+          cargarGruposMateria();
+        } else {
+          setStatus('error', data.error || "Ocurrió un error al inscribir las materias.");
+          inscribirBtn.disabled = false;
+          btnText.textContent = 'Inscribir Materias Seleccionadas';
+          btnSpin.classList.add('d-none');
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus('error', "Error de conexión. No se pudo completar la inscripción.");
+        inscribirBtn.disabled = false;
+        btnText.textContent = 'Inscribir Materias Seleccionadas';
+        btnSpin.classList.add('d-none');
+      }
+    }
+
+    function iniciarPollingResultado(cola, tareaId) {
+      if (pollingIntervalId) clearInterval(pollingIntervalId);
+      setStatus('processing', 'Procesando', true);
+      pollingIntervalId = setInterval(() => {
+        verificarEstadoTarea(cola, tareaId);
+      }, 1000); // cada 1 segundo
+    }
+
+    async function verificarEstadoTarea(cola, tareaId) {
+      const inscribirBtn = document.getElementById('inscribirBtn');
+      const btnText = inscribirBtn.querySelector('.btn-text');
+      const btnSpin = inscribirBtn.querySelector('.btn-spinner');
+
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/colas/${cola}/resultados_estados/${tareaId}`, {
+          headers: { "Authorization": "Bearer " + token }
+        });
+        const data = await res.json();
+
+        if (data.estado === 'completado') {
+          clearInterval(pollingIntervalId);
+          setStatus('success', (data.resultado && data.resultado.msg) ? data.resultado.msg : 'Tarea completada');
+          inscribirBtn.disabled = false;
+          btnText.textContent = 'Inscribir Materias Seleccionadas';
+          btnSpin.classList.add('d-none');
+          cargarMaterias();
+          cargarGruposMateria();
+          return;
+        }
+
+        if (data.estado === 'error') {
+          clearInterval(pollingIntervalId);
+          const detalle = (data.resultado && data.resultado.error) ? `: ${data.resultado.error}` : '';
+          setStatus('error', `Error en la tarea${detalle}`);
+          inscribirBtn.disabled = false;
+          btnText.textContent = 'Inscribir Materias Seleccionadas';
+          btnSpin.classList.add('d-none');
+          cargarGruposMateria();
+          return;
+        }
+
+        if (data.estado === 'espera') {
+          // animación simple con puntos
+          const base = 'Procesando';
+          const current = statusContainer.textContent.replace('…','...');
+          const dots = current.endsWith('...') ? '' : (current.endsWith('..') ? '...' : (current.endsWith('.') ? '..' : '.'));
+          setStatus('processing', base + dots, true);
+          return;
+        }
+
+        setStatus('error', `Estado desconocido: ${data.estado || 'sin estado'}`);
+        inscribirBtn.disabled = false;
+        btnText.textContent = 'Inscribir Materias Seleccionadas';
+        btnSpin.classList.add('d-none');
+
+      } catch (err) {
+        console.error('Error durante el polling:', err);
+        clearInterval(pollingIntervalId);
+        setStatus('error', 'Error de conexión al verificar el resultado.');
+        inscribirBtn.disabled = false;
+        btnText.textContent = 'Inscribir Materias Seleccionadas';
+        btnSpin.classList.add('d-none');
+      }
+    }
+
+    // Eventos
+    document.getElementById('inscribirBtn').addEventListener('click', inscribirMateriasSeleccionadas);
+
+    // Carga inicial
+    cargarMaterias();
+    cargarGruposMateria();
+  </script>
+</body>
+</html>
