@@ -17,6 +17,14 @@ app.get("/home.html", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "home.html"));
 });
 
+app.get("/inscripcion", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "/inscripcion.html"));
+});
+
+app.get("/procesando", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "/procesando.html"));
+});
+
 // Iniciar el servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor frontend corriendo en http://localhost:${PORT}`);

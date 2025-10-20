@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Inscripción en Proceso</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"/>
+
+  <style>
+    body { background:#f6f8fb; }
+    .page-header { background:linear-gradient(135deg,#0d6efd 0%,#6610f2 100%); color:#fff; padding:1.25rem 0; margin-bottom:1rem; }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div class="container d-flex justify-content-between align-items-center">
+      <h1 class="h5 mb-0">Inscripción en Proceso</h1>
+      <a href="home.html" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left"></i> Volver a Inicio</a>
+    </div>
+  </header>
+
+  <main class="container py-4">
+    <div id="alertTop" class="alert alert-info d-flex align-items-center" role="alert">
+      <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+      <div id="alertMsg">Tu inscripción está siendo procesada…</div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body text-center py-5">
+        <div id="mainSpinner" class="mb-3 spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+        <div id="mainIcon" class="mb-3 fs-1" style="display:none;"></div>
+        <h2 class="h5 fw-bold mb-2" id="estadoTitulo">Consultando estado inicial…</h2>
+        <p class="text-muted mb-4" id="estadoDetalle">Por favor, espera.</p>
+        <button id="btnVerificar" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#estadoModal">
+          <i class="bi bi-search"></i> Verificar estado
+        </button>
+      </div>
+      <div class="card-footer small text-muted">
+        <span>Cola: <strong id="lblCola">—</strong></span> •
+        <span>Tarea: <strong id="lblTarea">—</strong></span>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal fade" id="estadoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content shadow">
+        <div class="modal-header">
+          <h5 class="modal-title">Estado de la Tarea</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="estadoModalContenido">
+            </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; return; }
+
+        const cola = sessionStorage.getItem('ultimaCola');
+        const tareaId = sessionStorage.getItem('ultimaTareaId');
+
+        const ui = {
+            titulo: document.getElementById('estadoTitulo'),
+            detalle: document.getElementById('estadoDetalle'),
+            alertTop: document.getElementById('alertTop'),
+            alertMsg: document.getElementById('alertMsg'),
+            mainSpinner: document.getElementById('mainSpinner'),
+            mainIcon: document.getElementById('mainIcon'),
+            btnVerificar: document.getElementById('btnVerificar')
+        };
+        
+        const modalContent = document.getElementById('estadoModalContenido');
+        const estadoModalEl = document.getElementById('estadoModal');
+        
+        let pollingId = null;
+        const BASE_URL = 'http://127.0.0.1:8000';
+
+        document.getElementById('lblCola').textContent = cola || 'N/A';
+        document.getElementById('lblTarea').textContent = tareaId || 'N/A';
+        if (!cola || !tareaId) {
+            ui.alertTop.className = 'alert alert-danger';
+            ui.alertTop.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i> No se encontraron datos de la tarea.';
+            ui.titulo.textContent = 'Error';
+            ui.detalle.textContent = 'Vuelve a la página de inicio.';
+            ui.btnVerificar.disabled = true;
+            ui.mainSpinner.style.display = 'none';
+        }
+
+        async function pollingfetchEstado() {
+            const url = `${BASE_URL}/colas/${cola}/resultados_estados2/${tareaId}`;
+            try {
+                const res = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+                const data = await res.json();
+                return { res, data };
+            } catch (e) {
+                return { res: { status: 503 }, data: { estado: 'error', mensaje: 'Error de conexión' } };
+            }
+        }
+
+        function getMessageFromData(data) {
+            if (data?.resultado && typeof data.resultado === 'object') {
+                return data.resultado.msg || data.resultado.error || data.mensaje;
+            }
+            return data?.mensaje || data?.resultado || 'No hay detalles.';
+        }
+        
+        function actualizarPaginaPrincipal(res, data) {
+            const msg = getMessageFromData(data);
+            ui.mainSpinner.style.display = 'none';
+            ui.mainIcon.style.display = 'block';
+
+            if (res.status === 201 || data?.estado === 'completado') {
+                ui.titulo.textContent = 'Inscripción Completada';
+                ui.detalle.textContent = msg;
+                ui.alertTop.className = 'alert alert-success';
+                ui.alertTop.innerHTML = `<i class="bi bi-check-circle-fill me-2"></i> ${msg}`;
+                ui.mainIcon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                ui.btnVerificar.disabled = true;
+                ui.btnVerificar.innerHTML = '<i class="bi bi-check-lg"></i> Finalizado';
+            } else if (res.status >= 400 || data?.estado === 'error') {
+                ui.titulo.textContent = 'Error en la Inscripción';
+                ui.detalle.textContent = msg;
+                ui.alertTop.className = 'alert alert-danger';
+                ui.alertTop.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i> ${msg}`;
+                ui.mainIcon.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+                ui.btnVerificar.disabled = true;
+                ui.btnVerificar.innerHTML = '<i class="bi bi-x-lg"></i> Fallido';
+            } else { // Sigue en proceso
+                ui.titulo.textContent = 'Procesando…';
+                ui.detalle.textContent = data?.mensaje || 'La tarea sigue en la cola...';
+                ui.mainSpinner.style.display = 'block';
+                ui.mainIcon.style.display = 'none';
+            }
+        }
+
+        function actualizarContenidoModal(res, data) {
+            const msg = getMessageFromData(data);
+            let alertHtml = '';
+
+            if (res.status === 201 || data?.estado === 'completado') {
+                alertHtml = `<div class="alert alert-success">Completado</div>`;
+            } else if (res.status >= 400 || data?.estado === 'error') {
+                alertHtml = `<div class="alert alert-danger">Error</div>`;
+            } else { // Sigue en proceso
+                alertHtml = `<div class="alert alert-info d-flex align-items-center"><div class="spinner-border spinner-border-sm me-2"></div><div>En proceso...</div></div>`;
+            }
+
+            modalContent.innerHTML = `
+                ${alertHtml}
+                <dl class="row small mb-0">
+                  <dt class="col-4">Cola</dt><dd class="col-8">${cola}</dd>
+                  <dt class="col-4">Tarea</dt><dd class="col-8">${tareaId}</dd>
+                  <dt class="col-4">Estado</dt><dd class="col-8">${data?.estado || '—'}</dd>
+                  <dt class="col-4">Mensaje</dt><dd class="col-8">${msg}</dd>
+                   </dl>
+            `;
+        }
+
+        // ------------------- CAMBIO DE NOMBRE AQUÍ -------------------
+        // ANTES: async function consultarParaModal()
+        async function polling() {
+            const { res, data } = await pollingfetchEstado();
+            actualizarContenidoModal(res, data);
+            
+            if (data?.estado === 'completado' || data?.estado === 'error') {
+                // Cuando el polling en el modal detecta un estado final,
+                // actualiza también la página principal y se detiene.
+                actualizarPaginaPrincipal(res, data);
+                clearInterval(pollingId);
+                pollingId = null;
+            }
+        }
+        
+        estadoModalEl.addEventListener('show.bs.modal', () => {
+            modalContent.innerHTML = `<div class="alert alert-info d-flex align-items-center"><div class="spinner-border spinner-border-sm me-2"></div><div>Consultando...</div></div>`;
+            
+            // ------------------- CAMBIO DE NOMBRE AQUÍ -------------------
+            // ANTES: pollingId = setInterval(consultarParaModal, 3000);
+            pollingId = setInterval(polling, 500);
+            // Hacemos una consulta inmediata también
+            polling();
+        });
+        
+        estadoModalEl.addEventListener('hidden.bs.modal', () => {
+            clearInterval(pollingId);
+            pollingId = null;
+        });
+
+        async function cargaInicial() {
+            if (cola && tareaId) {
+                const { res, data } = await pollingfetchEstado();
+                actualizarPaginaPrincipal(res, data);
+            }
+        }
+        
+        cargaInicial();
+    });
+  </script>
+</body>
+</html>
