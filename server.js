@@ -17,6 +17,7 @@ app.get("/home.html", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "home.html"));
 });
 
+//pagina par ala inscripcion
 app.get("/inscripcion", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "/inscripcion.html"));
 });
