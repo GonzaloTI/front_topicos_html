@@ -27,6 +27,6 @@ app.get("/procesando", (req, res) => {
 });
 
 // Iniciar el servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor frontend corriendo en http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor frontend corriendo en http://0.0.0.0:${PORT}`);
 });
