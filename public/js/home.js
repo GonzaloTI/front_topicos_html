@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function cargarMateriasInscritas() {
     // La URL que me confirmaste que es la correcta
-    const url = `http://127.0.0.1:8000/materiasxregistro?registro=${registro}`;
+    const url = `http://3.18.107.125:8000/materiasxregistro?registro=${registro}`;
     
     listaContainer.innerHTML = `<div class="text-center p-3"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></div>`;
     
@@ -61,14 +61,26 @@ async function cargarMateriasInscritas() {
             const item = document.createElement('div');
             item.className = 'list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2';
             
+            const n = Object.prototype.hasOwnProperty.call(materia, 'nota') ? materia.nota : null;
+            const notaText  = (n === null || n === undefined) ? '—' : Number(n).toFixed(1);
+            // Colores Bootstrap según rango (ajusta a tu escala si quieres)
+            const notaColor = (n === null || n === undefined)
+              ? 'secondary'
+              : (n >= 85 ? 'success' : (n >= 70 ? 'primary' : (n >= 51 ? 'warning' : 'danger')));
+
+
+
             item.innerHTML = `
                 <div>
                     <h6 class="mb-0">${materia.nombre || 'Sin nombre'} (${materia.sigla || 'N/A'})</h6>
                     <small class="text-muted">Docente: ${materia.docente || 'No asignado'}</small>
                 </div>
+               <div class="d-flex align-items-center gap-2"> 
+                <span class="badge bg-${notaColor}">Nota: ${notaText}</span>
                 <button class="btn btn-secondary btn-sm ver-horario-btn">
                     <i class="bi bi-clock"></i> Ver horario y aula
                 </button>
+                 </div>
             `;
 
             const botonHorario = item.querySelector('.ver-horario-btn');

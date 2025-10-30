@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></td></tr>`;
         
         try {
-            const res = await fetch(`http://127.0.0.1:8000/gruposmateria`, {
+            const res = await fetch(`http://3.18.107.125:8000/gruposmateria`, {
                 headers: { "Authorization": "Bearer " + token }
             });
 
@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const payload = { estudiante_registro: registro, periodo_id, grupos_ids };
 
         try {
-            const res = await fetch(`http://127.0.0.1:8000/inscripcionmaterialistasync`, {
+            const res = await fetch(`http://3.18.107.125:8000/inscripcionmaterialistasync`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
                 body: JSON.stringify(payload)

@@ -6,7 +6,7 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   const errorText = document.getElementById("error");
 
   try {
-    const res = await fetch("http://localhost:8000/login", {
+    const res = await fetch("http://3.18.107.125:8000/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ usuario, password })
